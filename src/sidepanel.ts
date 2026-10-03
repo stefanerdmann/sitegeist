@@ -9,7 +9,7 @@ import {
 	type AgentState,
 	type AgentTool,
 } from "@mariozechner/pi-agent-core";
-import { type Api, getModel, getSelectableThinkingLevels, type Model, mapReasoningLevel } from "@mariozechner/pi-ai";
+import { type Api, getModel, getSelectableThinkingLevels, type Model } from "@mariozechner/pi-ai";
 import {
 	ChatPanel,
 	createExtractDocumentTool,
@@ -42,7 +42,7 @@ import {
 import { registerUserMessageRenderer } from "./messages/UserMessageRenderer.js";
 import { createWelcomeMessage, registerWelcomeRenderer } from "./messages/WelcomeMessage.js";
 import { isPiProvider } from "./models/pi-model-catalog.js";
-import { getProviderModels } from "./models/provider-models.js";
+import { adaptReasoningOptions, getProviderModels } from "./models/provider-models.js";
 import { getGitHubCopilotBaseUrl } from "./oauth/github-copilot.js";
 import { isOAuthCredentials, parseOAuthCredentials, resolveApiKey } from "./oauth/index.js";
 import { SYSTEM_PROMPT } from "./prompts/prompts.js";
@@ -431,8 +431,7 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 		convertToLlm: browserMessageTransformer,
 		toolExecution: "sequential",
 		streamFn: async (model, context, options) => {
-			const reasoning = mapReasoningLevel(model, options?.reasoning);
-			const effectiveOptions = options && reasoning !== options.reasoning ? { ...options, reasoning } : options;
+			const effectiveOptions = adaptReasoningOptions(model, options);
 			if (model.provider === "github-copilot") {
 				const stored = await storage.providerKeys.get("github-copilot");
 				if (stored && isOAuthCredentials(stored)) {

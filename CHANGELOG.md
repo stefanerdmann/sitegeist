@@ -15,6 +15,7 @@
 - Model picker now filters providers to configured accounts instead of showing every built-in provider
 - Setup flow can finish when the settings dialog closes
 - Thinking selector now displays and applies the selected level instead of appearing unchanged
+- Off sends explicit `none` for supported models; otherwise the dropdown shows Default instead of implying disabled reasoning
 
 ## [1.0.0] - 2026-03-15
 

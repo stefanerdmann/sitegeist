@@ -1,4 +1,11 @@
-import { type Api, getModels, type KnownProvider, type Model } from "@mariozechner/pi-ai";
+import {
+	type Api,
+	getModels,
+	type KnownProvider,
+	type Model,
+	mapReasoningLevel,
+	type SimpleStreamOptions,
+} from "@mariozechner/pi-ai";
 import { getAvailableCopilotModels } from "./copilot-models.js";
 import {
 	type CatalogResult,
@@ -11,6 +18,17 @@ import {
 export interface ProviderModelsResult {
 	models: Model<Api>[];
 	warning?: string;
+}
+
+/** Translate the UI's Off choice to an explicit API effort only for models that advertise it. */
+export function adaptReasoningOptions(
+	model: Model<Api>,
+	options?: SimpleStreamOptions,
+): SimpleStreamOptions | undefined {
+	const mapped = mapReasoningLevel(model, options?.reasoning ?? "off");
+	if (mapped === "none") return { ...options, reasoning: undefined, reasoningEffort: "none" };
+	if (!options) return undefined;
+	return mapped !== options.reasoning ? { ...options, reasoning: mapped } : options;
 }
 
 export async function getProviderModels(
