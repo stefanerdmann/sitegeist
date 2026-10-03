@@ -7,7 +7,7 @@
  */
 
 import { loginAnthropic, refreshAnthropic } from "./anthropic.js";
-import { loginGitHubCopilot, refreshGitHubCopilot } from "./github-copilot.js";
+import { clearEnterpriseCopilotRequests, loginGitHubCopilot, refreshGitHubCopilot } from "./github-copilot.js";
 import { loginGeminiCli, refreshGeminiCli } from "./google-gemini-cli.js";
 import { loginOpenAICodex, refreshOpenAICodex } from "./openai-codex.js";
 import {
@@ -18,6 +18,7 @@ import {
 } from "./types.js";
 
 export { type OAuthCredentials, isOAuthCredentials, parseOAuthCredentials, serializeOAuthCredentials };
+export { clearEnterpriseCopilotRequests };
 
 export type OAuthProviderId = "anthropic" | "openai-codex" | "github-copilot" | "google-gemini-cli";
 
@@ -56,6 +57,7 @@ export async function oauthLogin(
 	provider: OAuthProviderId,
 	_proxyUrl?: string,
 	onDeviceCode?: DeviceCodeCallback,
+	enterpriseUrl?: string,
 ): Promise<OAuthCredentials> {
 	switch (provider) {
 		case "anthropic":
@@ -63,7 +65,7 @@ export async function oauthLogin(
 		case "openai-codex":
 			return loginOpenAICodex();
 		case "github-copilot":
-			return loginGitHubCopilot(onDeviceCode || (() => {}));
+			return loginGitHubCopilot(onDeviceCode || (() => {}), enterpriseUrl);
 		case "google-gemini-cli":
 			return loginGeminiCli();
 		default:

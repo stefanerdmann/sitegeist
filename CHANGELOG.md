@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- GitHub Copilot login for GitHub Enterprise domains, including token refresh and Enterprise model API routing
+- Account-specific GitHub Copilot models in the model picker, with saved manual model IDs and API protocol overrides
+- Hourly model metadata refresh from pi.dev for Anthropic, OpenAI/Codex, and Copilot, with local cache and bundled offline fallback
+- Model-specific thinking levels and effort aliases from pi.dev where supported by the installed runtime
+- `build-all.sh` / `npm run build:all` to build the extension and local dependencies without regenerating models
+
+### Fixed
+
+- Model picker now filters providers to configured accounts instead of showing every built-in provider
+- Setup flow can finish when the settings dialog closes
+- Thinking selector now displays and applies the selected level instead of appearing unchanged
+
 ## [1.0.0] - 2026-03-15
 
 ### Added

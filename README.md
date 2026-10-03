@@ -65,6 +65,10 @@ The extension hot-reloads when the dev watcher rebuilds.
 
 On first launch, Sitegeist prompts you to connect at least one AI provider. You can log in with a subscription or enter an API key.
 
+For GitHub Copilot, enter your GitHub Enterprise hostname (for example, `company.ghe.com`) in the login form if your account uses a custom host. Leave it blank to use `github.com`. The model picker loads the models available to your account from Copilot. If a model is missing or the catalog is unavailable, you can enter its exact model ID and select an API protocol manually. Manually added models are saved per Enterprise domain and can be removed from the picker. The model still has to be enabled for your account.
+
+The model picker checks [pi.dev's JSON model catalog](https://pi.dev/api/models) for Anthropic, OpenAI (API keys and ChatGPT/Codex login), and GitHub Copilot. Model IDs, API protocols, context limits and other supported metadata (including available thinking levels) are refreshed at most once per hour or with **Refresh models**. If pi.dev is unreachable, the last cached catalog or bundled models are used. No credentials are sent to pi.dev. pi.dev describes providers' models, not which ones your subscription can access; Copilot models are additionally checked against the signed-in account. The thinking dropdown hides unsupported efforts and translates model-specific aliases (such as Minimal to Low). The current runtime does not offer pi.dev's separate Max level.
+
 Some subscription logins require the CORS proxy (configurable in Settings > Proxy). The default proxy is `https://proxy.mariozechner.at/proxy`.
 
 ## Checks
@@ -79,11 +83,15 @@ The Husky pre-commit hook runs the same checks before each commit.
 
 ## Building
 
+From the `sitegeist/` directory, build the extension and its local dependencies in one command:
+
 ```bash
-npm run build
+npm run build:all
 ```
 
-The unpacked extension is written to `dist-chrome/`.
+This builds `mini-lit`, the required `pi-mono` packages (TUI, AI, agent, web-ui), and the Chrome extension in order. It does not regenerate `pi-mono/packages/ai/src/models.generated.ts` or build unrelated monorepo packages. The unpacked extension is written to `dist-chrome/`; reload it in `chrome://extensions/` after building.
+
+If native dependencies were installed on another OS (for example, Linux instead of macOS), use `npm run build:all -- --install` to reinstall dependencies for the current machine before building. Add `--with-site` to also build the marketing website, or `--dry-run` to show the build steps without running them. `npm run build` continues to build only the extension.
 
 ## Updating the website
 

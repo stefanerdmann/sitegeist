@@ -9,6 +9,7 @@ export interface OAuthCredentials {
 	expires: number;
 	accountId?: string;
 	projectId?: string;
+	enterpriseUrl?: string;
 }
 
 /**

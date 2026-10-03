@@ -9,12 +9,11 @@ import {
 	type AgentState,
 	type AgentTool,
 } from "@mariozechner/pi-agent-core";
-import { getModel, getModels, type Model } from "@mariozechner/pi-ai";
+import { type Api, getModel, getSelectableThinkingLevels, type Model, mapReasoningLevel } from "@mariozechner/pi-ai";
 import {
 	ChatPanel,
 	createExtractDocumentTool,
 	createStreamFn,
-	ModelSelector,
 	ProxyTab,
 	SettingsDialog,
 	// PersistentStorageDialog,
@@ -29,6 +28,7 @@ import { ApiKeysOAuthTab } from "./dialogs/ApiKeysOAuthTab.js";
 import { CostsTab } from "./dialogs/CostsTab.js";
 import { SessionCostDialog } from "./dialogs/SessionCostDialog.js";
 import { SitegeistSessionListDialog } from "./dialogs/SessionListDialog.js";
+import { SitegeistModelSelector } from "./dialogs/SitegeistModelSelector.js";
 import { SkillsTab } from "./dialogs/SkillsTab.js";
 import { UpdateNotificationDialog } from "./dialogs/UpdateNotificationDialog.js";
 import { UserScriptsPermissionDialog } from "./dialogs/UserScriptsPermissionDialog.js";
@@ -41,7 +41,10 @@ import {
 } from "./messages/NavigationMessage.js";
 import { registerUserMessageRenderer } from "./messages/UserMessageRenderer.js";
 import { createWelcomeMessage, registerWelcomeRenderer } from "./messages/WelcomeMessage.js";
-import { isOAuthCredentials, resolveApiKey } from "./oauth/index.js";
+import { isPiProvider } from "./models/pi-model-catalog.js";
+import { getProviderModels } from "./models/provider-models.js";
+import { getGitHubCopilotBaseUrl } from "./oauth/github-copilot.js";
+import { isOAuthCredentials, parseOAuthCredentials, resolveApiKey } from "./oauth/index.js";
 import { SYSTEM_PROMPT } from "./prompts/prompts.js";
 import { SitegeistAppStorage } from "./storage/app-storage.js";
 import { DebuggerTool } from "./tools/debugger.js";
@@ -131,15 +134,36 @@ const DEFAULT_MODELS: Record<string, string> = {
 	zai: "glm-4.6",
 };
 
+async function getAvailableModelsForProvider(provider: string): Promise<Model<Api>[]> {
+	try {
+		const result = await getProviderModels(provider, storage.providerKeys, storage.settings);
+		if (result.warning) console.warn(result.warning);
+		return result.models;
+	} catch (error) {
+		console.warn(`Could not load ${provider} models:`, error);
+		return [];
+	}
+}
+
+async function refreshSelectedModel(model: Model<Api>): Promise<Model<Api>> {
+	if (!isPiProvider(model.provider) || !(await storage.providerKeys.get(model.provider))) return model;
+	const available = await getAvailableModelsForProvider(model.provider);
+	return available.find((item) => item.id === model.id && item.api === model.api) ?? model;
+}
+
 async function selectDefaultModelForAvailableProvider() {
 	const providers = await getProvidersWithKeys();
 	if (providers.length === 0 || !agent) return;
+	const modelLists = new Map<string, Model<Api>[]>();
+	for (const provider of providers) modelLists.set(provider, await getAvailableModelsForProvider(provider));
 
 	// Try each provider with keys and find a default model
 	for (const provider of providers) {
 		const modelId = DEFAULT_MODELS[provider];
 		if (modelId) {
-			const model = getModel(provider as any, modelId);
+			const available = modelLists.get(provider) ?? [];
+			const model =
+				available.find((item) => item.id === modelId) ?? (isPiProvider(provider) ? available[0] : undefined);
 			if (model) {
 				agent.setModel(model);
 				await storage.settings.set("lastUsedModel", model);
@@ -152,7 +176,7 @@ async function selectDefaultModelForAvailableProvider() {
 
 	// If no default found, try the first model for the first provider with a key
 	for (const provider of providers) {
-		const models = getModels(provider as any);
+		const models = modelLists.get(provider) ?? [];
 		if (models.length > 0) {
 			agent.setModel(models[0]);
 			await storage.settings.set("lastUsedModel", models[0]);
@@ -354,17 +378,29 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 
 	// Determine default model: saved > default for a provider with key > gemini flash fallback
 	let defaultModel: Model<any> | undefined;
-	if (!initialState?.model) {
+	if (initialState?.model) {
+		const model = await refreshSelectedModel(initialState.model);
+		initialState = {
+			...initialState,
+			model,
+			thinkingLevel:
+				initialState.thinkingLevel && getSelectableThinkingLevels(model).includes(initialState.thinkingLevel)
+					? initialState.thinkingLevel
+					: "off",
+		};
+	} else {
 		const savedModel = await storage.settings.get<Model<any>>("lastUsedModel");
 		if (savedModel) {
-			defaultModel = savedModel;
+			defaultModel = await refreshSelectedModel(savedModel);
 		} else {
 			// Try to find a default model for a provider the user already has a key for
 			const providersWithKeys = await getProvidersWithKeys();
 			for (const provider of providersWithKeys) {
 				const modelId = DEFAULT_MODELS[provider];
 				if (modelId) {
-					const model = getModel(provider as any, modelId);
+					const models = await getAvailableModelsForProvider(provider);
+					const model =
+						models.find((item) => item.id === modelId) ?? (isPiProvider(provider) ? models[0] : undefined);
 					if (model) {
 						defaultModel = model;
 						break;
@@ -378,21 +414,41 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 		defaultModel = getModel("anthropic", "claude-sonnet-4-6");
 	}
 
+	const stream = createStreamFn(async () => {
+		const enabled = await storage.settings.get<boolean>("proxy.enabled");
+		if (!enabled) return undefined;
+		return (await storage.settings.get<string>("proxy.url")) || undefined;
+	});
+
 	agent = new Agent({
 		initialState: initialState || {
 			systemPrompt: SYSTEM_PROMPT,
 			model: defaultModel,
-			thinkingLevel: "medium",
+			thinkingLevel: defaultModel && getSelectableThinkingLevels(defaultModel).includes("medium") ? "medium" : "off",
 			messages: [],
 			tools: [],
 		},
 		convertToLlm: browserMessageTransformer,
 		toolExecution: "sequential",
-		streamFn: createStreamFn(async () => {
-			const enabled = await storage.settings.get<boolean>("proxy.enabled");
-			if (!enabled) return undefined;
-			return (await storage.settings.get<string>("proxy.url")) || undefined;
-		}),
+		streamFn: async (model, context, options) => {
+			const reasoning = mapReasoningLevel(model, options?.reasoning);
+			const effectiveOptions = options && reasoning !== options.reasoning ? { ...options, reasoning } : options;
+			if (model.provider === "github-copilot") {
+				const stored = await storage.providerKeys.get("github-copilot");
+				if (stored && isOAuthCredentials(stored)) {
+					const credentials = parseOAuthCredentials(stored);
+					return stream(
+						{
+							...model,
+							baseUrl: getGitHubCopilotBaseUrl(options?.apiKey || credentials.access, credentials.enterpriseUrl),
+						},
+						context,
+						effectiveOptions,
+					);
+				}
+			}
+			return stream(model, context, effectiveOptions);
+		},
 		getApiKey: async (provider: string) => {
 			const stored = await storage.providerKeys.get(provider);
 			if (!stored) return undefined;
@@ -470,16 +526,16 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 				openApiKeysDialog();
 				return;
 			}
-			ModelSelector.open(
-				agent.state.model,
-				(model) => {
-					agent.setModel(model);
-					chatPanel.agentInterface?.requestUpdate();
-					updateAuthLabel().catch(() => {});
-					renderApp();
-				},
-				providers,
-			);
+			SitegeistModelSelector.open(agent.state.model, providers, (model) => {
+				agent.setModel(model);
+				if (!getSelectableThinkingLevels(model).includes(agent.state.thinkingLevel)) agent.setThinkingLevel("off");
+				storage.settings
+					.set("lastUsedModel", model)
+					.catch((error) => console.error("Failed to save model:", error));
+				chatPanel.agentInterface?.requestUpdate();
+				updateAuthLabel().catch(() => {});
+				renderApp();
+			});
 		},
 		onBeforeSend: async () => {
 			if (!agent) return;

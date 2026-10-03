@@ -1,9 +1,11 @@
 import { Button } from "@mariozechner/mini-lit/dist/Button.js";
+import { Input } from "@mariozechner/mini-lit/dist/Input.js";
 import { getProviders } from "@mariozechner/pi-ai";
 import { getAppStorage, SettingsTab } from "@mariozechner/pi-web-ui";
 import { html, type TemplateResult } from "lit";
 import { Toast } from "../components/Toast.js";
 import {
+	clearEnterpriseCopilotRequests,
 	getOAuthProviderName,
 	isOAuthCredentials,
 	type OAuthProviderId,
@@ -39,6 +41,7 @@ export class ApiKeysOAuthTab extends SettingsTab {
 	private oauthStatuses: Record<string, "none" | "logged-in" | "logging-in" | "error"> = {};
 	private oauthErrors: Record<string, string> = {};
 	private deviceCode: string | null = null;
+	private copilotEnterpriseUrl = "";
 
 	getTabName(): string {
 		return "API Keys & OAuth";
@@ -56,6 +59,7 @@ export class ApiKeysOAuthTab extends SettingsTab {
 			const stored = await storage.providerKeys.get(key);
 			if (stored && isOAuthCredentials(stored)) {
 				const creds = parseOAuthCredentials(stored);
+				if (provider === "github-copilot") this.copilotEnterpriseUrl = creds.enterpriseUrl || "";
 				const expired = Date.now() >= creds.expires;
 				this.oauthStatuses[provider] = expired ? "none" : "logged-in";
 			} else {
@@ -74,15 +78,21 @@ export class ApiKeysOAuthTab extends SettingsTab {
 		try {
 			const storage = getAppStorage();
 
-			const credentials = await oauthLogin(provider, undefined, (info) => {
-				this.deviceCode = info.userCode;
-				this.requestUpdate();
-			});
+			const credentials = await oauthLogin(
+				provider,
+				undefined,
+				(info) => {
+					this.deviceCode = info.userCode;
+					this.requestUpdate();
+				},
+				provider === "github-copilot" ? this.copilotEnterpriseUrl : undefined,
+			);
 
 			const key = PROVIDER_KEY_MAP[provider];
 			await storage.providerKeys.set(key, serializeOAuthCredentials(credentials));
 
 			this.oauthStatuses[provider] = "logged-in";
+			if (provider === "github-copilot") this.copilotEnterpriseUrl = credentials.enterpriseUrl || "";
 			this.deviceCode = null;
 			Toast.success(`Logged in to ${getOAuthProviderName(provider)}`);
 		} catch (error) {
@@ -98,6 +108,10 @@ export class ApiKeysOAuthTab extends SettingsTab {
 		const storage = getAppStorage();
 		const key = PROVIDER_KEY_MAP[provider];
 		await storage.providerKeys.delete(key);
+		if (provider === "github-copilot") {
+			await clearEnterpriseCopilotRequests();
+			this.copilotEnterpriseUrl = "";
+		}
 		this.oauthStatuses[provider] = "none";
 		this.oauthErrors[provider] = "";
 		this.requestUpdate();
@@ -114,7 +128,7 @@ export class ApiKeysOAuthTab extends SettingsTab {
 					<div class="text-xs text-muted-foreground mt-1">
 						${
 							status === "logged-in"
-								? html`<span class="text-green-600 dark:text-green-400">Connected</span>`
+								? html`<span class="text-green-600 dark:text-green-400">Connected${provider === "github-copilot" && this.copilotEnterpriseUrl ? ` to ${this.copilotEnterpriseUrl}` : ""}</span>`
 								: status === "logging-in"
 									? this.deviceCode
 										? html`<span>Enter code: <strong class="text-foreground font-mono">${this.deviceCode}</strong></span>`
@@ -124,6 +138,20 @@ export class ApiKeysOAuthTab extends SettingsTab {
 										: html`<span>Not connected</span>`
 						}
 					</div>
+					${
+						provider === "github-copilot" && status !== "logged-in"
+							? Input({
+									label: "GitHub Enterprise domain (blank for github.com)",
+									type: "text",
+									placeholder: "company.ghe.com",
+									value: this.copilotEnterpriseUrl,
+									disabled: status === "logging-in",
+									onInput: (e) => {
+										this.copilotEnterpriseUrl = (e.target as HTMLInputElement).value;
+									},
+								})
+							: ""
+					}
 				</div>
 				<div class="flex gap-2">
 					${

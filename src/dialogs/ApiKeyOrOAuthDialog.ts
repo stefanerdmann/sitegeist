@@ -1,6 +1,7 @@
 import { Button } from "@mariozechner/mini-lit/dist/Button.js";
 import { DialogContent, DialogHeader } from "@mariozechner/mini-lit/dist/Dialog.js";
 import { DialogBase } from "@mariozechner/mini-lit/dist/DialogBase.js";
+import { Input } from "@mariozechner/mini-lit/dist/Input.js";
 import { getAppStorage } from "@mariozechner/pi-web-ui";
 import { html } from "lit";
 import { Toast } from "../components/Toast.js";
@@ -25,6 +26,7 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 	private oauthStatus: "idle" | "logging-in" | "error" = "idle";
 	private oauthError = "";
 	private deviceCode: string | null = null;
+	private copilotEnterpriseUrl = "";
 
 	protected modalWidth = "min(500px, 90vw)";
 	protected modalHeight = "auto";
@@ -75,10 +77,15 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 		try {
 			const storage = getAppStorage();
 
-			const credentials = await oauthLogin(this.provider as OAuthProviderId, undefined, (info) => {
-				this.deviceCode = info.userCode;
-				this.requestUpdate();
-			});
+			const credentials = await oauthLogin(
+				this.provider as OAuthProviderId,
+				undefined,
+				(info) => {
+					this.deviceCode = info.userCode;
+					this.requestUpdate();
+				},
+				this.provider === "github-copilot" ? this.copilotEnterpriseUrl : undefined,
+			);
 
 			await storage.providerKeys.set(this.provider, serializeOAuthCredentials(credentials));
 
@@ -111,6 +118,21 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 							? html`
 							<div class="flex flex-col gap-3">
 								<h3 class="text-sm font-semibold text-foreground">Subscription Login</h3>
+
+								${
+									this.provider === "github-copilot"
+										? Input({
+												label: "GitHub Enterprise domain (blank for github.com)",
+												type: "text",
+												placeholder: "company.ghe.com",
+												value: this.copilotEnterpriseUrl,
+												disabled: this.oauthStatus === "logging-in",
+												onInput: (e) => {
+													this.copilotEnterpriseUrl = (e.target as HTMLInputElement).value;
+												},
+											})
+										: ""
+								}
 
 								<div class="flex items-center justify-between p-3 rounded-lg border border-border bg-card">
 									<div class="flex-1">

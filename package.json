@@ -9,8 +9,10 @@
 		"clean": "rm -rf dist-chrome",
 		"build:chrome": "node ./scripts/build.mjs && tailwindcss -i ./src/app.css -o ./dist-chrome/app.css --minify",
 		"build": "npm run build:chrome",
+		"build:all": "./build-all.sh",
 		"dev": "concurrently -n \"build,css,server\" -c \"blue,green,yellow\" \"node ./scripts/build.mjs --watch\" \"tailwindcss -i ./src/app.css -o ./dist-chrome/app.css --watch\" \"node ./scripts/dev-server.mjs\"",
 		"typecheck": "tsc --noEmit",
+		"test": "tsx --test test/*.test.mjs",
 		"check": "biome check --write . && tsc --noEmit && cd site && npm run check",
 		"prepare": "husky"
 	},
