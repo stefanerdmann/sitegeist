@@ -1,4 +1,4 @@
-import { icon } from "@mariozechner/mini-lit";
+import { i18n, icon } from "@mariozechner/mini-lit";
 import { Button } from "@mariozechner/mini-lit/dist/Button.js";
 import { Input } from "@mariozechner/mini-lit/dist/Input.js";
 import "@mariozechner/mini-lit/dist/ThemeToggle.js";
@@ -14,6 +14,7 @@ import {
 	ChatPanel,
 	createExtractDocumentTool,
 	createStreamFn,
+	loadAttachment,
 	ProxyTab,
 	SettingsDialog,
 	// PersistentStorageDialog,
@@ -21,7 +22,7 @@ import {
 	setShowJsonMode,
 } from "@mariozechner/pi-web-ui";
 import { html, render } from "lit";
-import { History, Plus, Settings } from "lucide";
+import { FolderOpen, History, Plus, Settings } from "lucide";
 import { AboutTab } from "./dialogs/AboutTab.js";
 import { ApiKeyOrOAuthDialog } from "./dialogs/ApiKeyOrOAuthDialog.js";
 import { ApiKeysOAuthTab } from "./dialogs/ApiKeysOAuthTab.js";
@@ -33,6 +34,8 @@ import { SkillsTab } from "./dialogs/SkillsTab.js";
 import { UpdateNotificationDialog } from "./dialogs/UpdateNotificationDialog.js";
 import { UserScriptsPermissionDialog } from "./dialogs/UserScriptsPermissionDialog.js";
 import { WelcomeSetupDialog } from "./dialogs/WelcomeSetupDialog.js";
+import { WorkspaceTab } from "./dialogs/WorkspaceTab.js";
+import { WorkspaceWriteDialog } from "./dialogs/WorkspaceWriteDialog.js";
 import { browserMessageTransformer } from "./messages/message-transformer.js";
 import {
 	createNavigationMessage,
@@ -54,10 +57,14 @@ import { NativeInputEventsRuntimeProvider } from "./tools/NativeInputEventsRunti
 import { isToolNavigating, NavigateTool } from "./tools/navigate.js";
 import { createReplTool } from "./tools/repl/repl.js";
 import { BrowserJsRuntimeProvider, NavigateRuntimeProvider } from "./tools/repl/runtime-providers.js";
+import { createListWorkspaceTool, createReadWorkspaceTool, createWriteWorkspaceTool } from "./tools/workspace.js";
 import * as port from "./utils/port.js";
 import "./utils/i18n-extension.js";
 import "./utils/live-reload.js";
 import { tutorials } from "./tutorials.js";
+import { getWorkspaceDirectoryPicker } from "./workspace/file-system.js";
+import { ReadonlyWorkspace } from "./workspace/readonly-workspace.js";
+import { WorkspaceWriter } from "./workspace/workspace-writer.js";
 
 // Register custom message renderers
 registerNavigationRenderer();
@@ -86,6 +93,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 const storage = new SitegeistAppStorage();
 setAppStorage(storage);
 
+const workspaceChannel = new BroadcastChannel("sitegeist-working-folder");
+const workspace = new ReadonlyWorkspace(storage.workspace, {
+	picker: getWorkspaceDirectoryPicker(),
+	extractDocumentText: async (file) => {
+		const attachment = await loadAttachment(file);
+		if (attachment.extractedText === undefined) throw new Error("Could not extract text from this document.");
+		return attachment.extractedText;
+	},
+	onSelectionChange: () => workspaceChannel.postMessage("changed"),
+});
+const workspaceWriter = new WorkspaceWriter(workspace, { confirmWrite: WorkspaceWriteDialog.confirm });
+workspaceChannel.onmessage = () => void workspace.refresh();
+window.addEventListener("focus", () => void workspace.refresh());
+window.addEventListener("pagehide", (event) => {
+	if (!event.persisted) workspaceChannel.close();
+});
+
 // ============================================================================
 // APP STATE
 // ============================================================================
@@ -96,6 +120,10 @@ let agent: Agent;
 let chatPanel: ChatPanel;
 let agentUnsubscribe: (() => void) | undefined;
 let currentWindowId: number;
+
+workspace.subscribe(() => {
+	if (chatPanel) renderApp();
+});
 
 // Track which skills we've shown in full (skillName -> lastUpdated timestamp)
 // Reset when a new session/agent is created
@@ -202,13 +230,18 @@ async function hasAnyApiKey(): Promise<boolean> {
 	return providers.length > 0;
 }
 
+function openSettings(workspaceFirst = false, onClose?: () => void): void {
+	const folderTab = new WorkspaceTab(workspace);
+	const accountTabs = [new ApiKeysOAuthTab(), new CostsTab(), new SkillsTab()];
+	const otherTabs = [new ProxyTab(), new AboutTab()];
+	void SettingsDialog.open(
+		workspaceFirst ? [folderTab, ...accountTabs, ...otherTabs] : [...accountTabs, folderTab, ...otherTabs],
+		onClose,
+	);
+}
+
 function openApiKeysDialog(): Promise<void> {
-	return new Promise((resolve) => {
-		SettingsDialog.open(
-			[new ApiKeysOAuthTab(), new CostsTab(), new SkillsTab(), new ProxyTab(), new AboutTab()],
-			resolve,
-		);
-	});
+	return new Promise((resolve) => openSettings(false, resolve));
 }
 
 async function updateAuthLabel() {
@@ -608,6 +641,9 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 				skillTool,
 				extractDocumentTool,
 				extractImageTool,
+				createListWorkspaceTool(workspace),
+				createReadWorkspaceTool(workspace),
+				createWriteWorkspaceTool(workspaceWriter, (filename) => _artifactsPanel.artifacts.get(filename)?.content),
 			];
 
 			// Conditionally add debugger tool if enabled
@@ -661,11 +697,15 @@ const newSession = () => {
 // RENDER
 // ============================================================================
 const renderApp = () => {
+	const folderState = workspace.state;
+	const folderTitle = folderState.name
+		? `${i18n("Working folder")}: ${folderState.name} (${folderState.writeEnabled ? i18n("Read and write") : i18n("Read-only")})${folderState.permission !== "granted" ? ` — ${i18n("Grant read access")}` : folderState.writeEnabled && folderState.writePermission !== "granted" ? ` — ${i18n("Read and write")}` : ""}`
+		: i18n("Working folder");
 	const appHtml = html`
 		<div class="w-full h-full flex flex-col bg-background text-foreground overflow-hidden">
 			<!-- Header -->
 			<div class="flex items-center justify-between border-b border-border shrink-0">
-				<div class="flex items-center gap-2 px-3 py-2">
+				<div class="flex min-w-0 items-center gap-2 px-3 py-2">
 					${Button({
 						variant: "ghost",
 						size: "sm",
@@ -748,21 +788,27 @@ const renderApp = () => {
 							: html``
 					}
 				</div>
-				<div class="flex items-center gap-1 px-2">
+				<div class="flex min-w-0 items-center gap-1 px-2">
 					${agent ? html`<span class="text-[10px] text-muted-foreground truncate max-w-[120px]" title="${agent.state.model.provider}/${agent.state.model.id}${authLabel ? ` (${authLabel})` : ""}">${agent.state.model.provider}${authLabel ? html` <span class="text-[9px] opacity-70">${authLabel}</span>` : ""}</span>` : ""}
 					<theme-toggle></theme-toggle>
 					${Button({
 						variant: "ghost",
 						size: "sm",
+						children: icon(FolderOpen, "sm"),
+						className: folderState.name
+							? folderState.permission === "granted" &&
+								(!folderState.writeEnabled || folderState.writePermission === "granted")
+								? "text-green-600 dark:text-green-500"
+								: "text-warning"
+							: "",
+						onClick: () => openSettings(true),
+						title: folderTitle,
+					})}
+					${Button({
+						variant: "ghost",
+						size: "sm",
 						children: icon(Settings, "sm"),
-						onClick: () =>
-							SettingsDialog.open([
-								new ApiKeysOAuthTab(),
-								new CostsTab(),
-								new SkillsTab(),
-								new ProxyTab(),
-								new AboutTab(),
-							]),
+						onClick: () => openSettings(),
 						title: "Settings",
 					})}
 				</div>
@@ -973,6 +1019,7 @@ async function initApp() {
 	const stored = await chrome.storage.local.get("showJsonMode");
 	const showJsonModeEnabled = (stored.showJsonMode as boolean) || false;
 	setShowJsonMode(showJsonModeEnabled);
+	await workspace.refresh();
 
 	// Get current window ID for filtering tab events
 	const currentWindow = await chrome.windows.getCurrent();

@@ -54,6 +54,15 @@ body {
 	background-color: rgba(0, 0, 0, 0);
 }
 
+/* Keep all settings tabs reachable in narrow side panels. */
+settings-dialog .md\:hidden {
+	overflow-x: auto;
+}
+
+settings-dialog .md\:hidden > button {
+	flex-shrink: 0;
+}
+
 /* Welcome message animations */
 @keyframes fadeInUp {
 	from {

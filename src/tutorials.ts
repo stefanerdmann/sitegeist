@@ -64,6 +64,13 @@ Tell them: "Use the attachment button in the chat input to attach files or simpl
 
 STOP.
 
+**Local Working Folder:**
+Explain: "You can also choose a local folder using the folder icon or Settings > Folder. By default, I can list its files and read individual files needed for your request, without changing anything. Selecting a folder does not upload all files. Only the content I actually read for your task is sent to the selected AI provider."
+Explain that the selected folder is shared across chats/windows, can be disconnected, and may need read-access confirmation again after restarting Chrome. Already-read content remains in the conversation after disconnecting.
+Explain: "If you want to save output there, explicitly enable Read and write in Settings > Folder. Every save opens an additional confirmation showing the target and proposed content; existing files are replaced only after you approve. You can switch back to read-only access. I cannot delete files or create directories, and I cannot undo changes already saved."
+Do not activate write access or save a file as part of this explanation unless the user asks.
+STOP.
+
 **Interface Overview:**
 Explain the UI elements:
 
@@ -72,7 +79,8 @@ Explain the UI elements:
 - New session icon → Start fresh
 - Session title field → Click to rename the current session
 - Theme toggle → Switch between system/light/dark theme
-- Settings icon → Configure API keys, skills, proxy settings
+- Folder icon → Choose, reauthorize or disconnect a local working folder; read-only by default, with optional writing after explicit opt-in and confirmation
+- Settings icon → Configure API keys, skills, working folder, proxy settings
 
 **Message Editor (bottom):**
 - Attachment icon → Attach files to chat
@@ -86,6 +94,7 @@ STOP.
 Explain where data is stored and who gets what:
 - **Settings & API keys**: Stored locally on your computer only
 - **Sessions & attachments**: Stored locally on your computer only
+- **Working folder**: The folder handle is remembered locally. Files stay in the original folder and are not automatically uploaded; listings and file contents read by tools become part of the chat and are sent to the selected LLM provider. Disconnecting prevents future reads, not access to old chat results.
 - **When you send messages**: All text and attachments in the chat session are sent to the LLM provider (default: Anthropic). They're configured to not retain your data or use it for training
 - **CORS proxy** (on by default): If enabled in settings, requests to the LLM go through the proxy due to CORS restrictions when using an Anthropic OAuth token, or using Z-AI. Default is https://proxy.mariozechner.at/proxy which does not retain or log data. Use your own proxy or a service like corsproxy.io if preferred
 

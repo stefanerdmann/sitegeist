@@ -16,6 +16,35 @@ declare module "@mariozechner/mini-lit" {
 		"Loading...": string;
 
 		// Sitegeist extension keys
+		Folder: string;
+		"Working folder": string;
+		"Read-only": string;
+		"Read and write": string;
+		"Use read-only access": string;
+		"Save file": string;
+		"Replace existing file": string;
+		"Bytes to save": string;
+		"Existing file size": string;
+		"Source artifact": string;
+		"New content (preview)": string;
+		"Binary file: review the source artifact before saving.": string;
+		"This saves only the shown file. Any existing contents at this path will be replaced. Saved changes cannot be undone by Sitegeist.": string;
+		"Writing is enabled. Every save requires a separate confirmation for the exact file and content.": string;
+		"Write access needs confirmation. Click Read and write to renew it.": string;
+		"Read-only mode blocks Sitegeist writes even if Chrome remembers write permission. It does not undo changes already saved.": string;
+		"Choose folder": string;
+		"Change folder": string;
+		"Grant read access": string;
+		"Disconnect folder": string;
+		"No working folder selected": string;
+		"Choose a local folder that Sitegeist can list and read. Access starts read-only; writing requires a separate opt-in. Files cannot be deleted.": string;
+		"Selecting a folder does not upload its contents. Only files read for your request are included in the chat and sent to the selected AI provider.": string;
+		"The selected folder is shared across chats and windows. Chrome may ask you to grant read access again after restarting.": string;
+		"Read access is ready. Ask Sitegeist to list files or read a file in this folder.": string;
+		"Read access needs confirmation. Click Grant read access or choose the folder again.": string;
+		"Folder access is unavailable in this browser. Use chat attachments instead.": string;
+		"Disconnecting stops future folder access. Previously read content remains in the conversation; delete the session to remove its local copy.": string;
+		"Supports text/code, PDF, Word, Excel, PowerPoint and common images, up to 20 MB per file. Generated artifacts can be saved to the folder only with write access and confirmation.": string;
 		"Permission request failed": string;
 		"JavaScript Execution Permission Required": string;
 		"This extension needs permission to execute JavaScript code on web pages": string;
@@ -97,6 +126,48 @@ declare module "@mariozechner/mini-lit" {
 
 const sitegeistTranslations = {
 	en: {
+		Folder: "Folder",
+		"Working folder": "Working folder",
+		"Read-only": "Read-only",
+		"Read and write": "Read and write",
+		"Use read-only access": "Use read-only access",
+		"Save file": "Save file",
+		"Replace existing file": "Replace existing file",
+		"Bytes to save": "Bytes to save",
+		"Existing file size": "Existing file size",
+		"Source artifact": "Source artifact",
+		"New content (preview)": "New content (preview)",
+		"Binary file: review the source artifact before saving.":
+			"Binary file: review the source artifact before saving.",
+		"This saves only the shown file. Any existing contents at this path will be replaced. Saved changes cannot be undone by Sitegeist.":
+			"This saves only the shown file. Any existing contents at this path will be replaced. Saved changes cannot be undone by Sitegeist.",
+		"Writing is enabled. Every save requires a separate confirmation for the exact file and content.":
+			"Writing is enabled. Every save requires a separate confirmation for the exact file and content.",
+		"Write access needs confirmation. Click Read and write to renew it.":
+			"Write access needs confirmation. Click Read and write to renew it.",
+		"Read-only mode blocks Sitegeist writes even if Chrome remembers write permission. It does not undo changes already saved.":
+			"Read-only mode blocks Sitegeist writes even if Chrome remembers write permission. It does not undo changes already saved.",
+		"Choose folder": "Choose folder",
+		"Change folder": "Change folder",
+		"Grant read access": "Grant read access",
+		"Disconnect folder": "Disconnect folder",
+		"No working folder selected": "No working folder selected",
+		"Choose a local folder that Sitegeist can list and read. Access starts read-only; writing requires a separate opt-in. Files cannot be deleted.":
+			"Choose a local folder that Sitegeist can list and read. Access starts read-only; writing requires a separate opt-in. Files cannot be deleted.",
+		"Selecting a folder does not upload its contents. Only files read for your request are included in the chat and sent to the selected AI provider.":
+			"Selecting a folder does not upload its contents. Only files read for your request are included in the chat and sent to the selected AI provider.",
+		"The selected folder is shared across chats and windows. Chrome may ask you to grant read access again after restarting.":
+			"The selected folder is shared across chats and windows. Chrome may ask you to grant read access again after restarting.",
+		"Read access is ready. Ask Sitegeist to list files or read a file in this folder.":
+			"Read access is ready. Ask Sitegeist to list files or read a file in this folder.",
+		"Read access needs confirmation. Click Grant read access or choose the folder again.":
+			"Read access needs confirmation. Click Grant read access or choose the folder again.",
+		"Folder access is unavailable in this browser. Use chat attachments instead.":
+			"Folder access is unavailable in this browser. Use chat attachments instead.",
+		"Disconnecting stops future folder access. Previously read content remains in the conversation; delete the session to remove its local copy.":
+			"Disconnecting stops future folder access. Previously read content remains in the conversation; delete the session to remove its local copy.",
+		"Supports text/code, PDF, Word, Excel, PowerPoint and common images, up to 20 MB per file. Generated artifacts can be saved to the folder only with write access and confirmation.":
+			"Supports text/code, PDF, Word, Excel, PowerPoint and common images, up to 20 MB per file. Generated artifacts can be saved to the folder only with write access and confirmation.",
 		"Permission request failed": "Permission request failed",
 		"JavaScript Execution Permission Required": "JavaScript Execution Permission Required",
 		"This extension needs permission to execute JavaScript code on web pages":
@@ -186,6 +257,48 @@ const sitegeistTranslations = {
 		"Update Now": "Update Now",
 	},
 	de: {
+		Folder: "Ordner",
+		"Working folder": "Arbeitsordner",
+		"Read-only": "Nur lesen",
+		"Read and write": "Lesen und Schreiben",
+		"Use read-only access": "Auf Nur lesen zurückstellen",
+		"Save file": "Datei speichern",
+		"Replace existing file": "Vorhandene Datei ersetzen",
+		"Bytes to save": "Zu speichernde Bytes",
+		"Existing file size": "Bisherige Dateigröße",
+		"Source artifact": "Quellartefakt",
+		"New content (preview)": "Neuer Inhalt (Vorschau)",
+		"Binary file: review the source artifact before saving.":
+			"Binärdatei: Prüfen Sie das Quellartefakt vor dem Speichern.",
+		"This saves only the shown file. Any existing contents at this path will be replaced. Saved changes cannot be undone by Sitegeist.":
+			"Es wird nur die angezeigte Datei gespeichert. Vorhandene Inhalte an diesem Pfad werden ersetzt. Sitegeist kann gespeicherte Änderungen nicht rückgängig machen.",
+		"Writing is enabled. Every save requires a separate confirmation for the exact file and content.":
+			"Schreiben ist aktiviert. Jeder Speichervorgang verlangt eine gesonderte Bestätigung für die konkrete Datei und den Inhalt.",
+		"Write access needs confirmation. Click Read and write to renew it.":
+			"Der Schreibzugriff muss bestätigt werden. Klicken Sie dazu auf Lesen und Schreiben.",
+		"Read-only mode blocks Sitegeist writes even if Chrome remembers write permission. It does not undo changes already saved.":
+			"Nur lesen blockiert Sitegeist-Schreibzugriffe, auch wenn Chrome eine Schreibberechtigung gespeichert hat. Bereits gespeicherte Änderungen bleiben bestehen.",
+		"Choose folder": "Ordner auswählen",
+		"Change folder": "Ordner wechseln",
+		"Grant read access": "Lesezugriff erlauben",
+		"Disconnect folder": "Ordner trennen",
+		"No working folder selected": "Kein Arbeitsordner ausgewählt",
+		"Choose a local folder that Sitegeist can list and read. Access starts read-only; writing requires a separate opt-in. Files cannot be deleted.":
+			"Wählen Sie einen lokalen Ordner zum Auflisten und Lesen. Der Zugriff beginnt schreibgeschützt; Schreiben muss separat freigegeben werden. Dateien können nicht gelöscht werden.",
+		"Selecting a folder does not upload its contents. Only files read for your request are included in the chat and sent to the selected AI provider.":
+			"Die Ordnerauswahl lädt keine Inhalte hoch. Nur für Ihre Anfrage gelesene Dateien werden Teil des Chats und an den ausgewählten KI-Anbieter gesendet.",
+		"The selected folder is shared across chats and windows. Chrome may ask you to grant read access again after restarting.":
+			"Der ausgewählte Ordner gilt für alle Chats und Fenster. Nach einem Neustart kann Chrome erneut eine Bestätigung des Lesezugriffs verlangen.",
+		"Read access is ready. Ask Sitegeist to list files or read a file in this folder.":
+			"Der Lesezugriff ist bereit. Bitten Sie Sitegeist, Dateien aufzulisten oder eine Datei in diesem Ordner zu lesen.",
+		"Read access needs confirmation. Click Grant read access or choose the folder again.":
+			"Der Lesezugriff muss bestätigt werden. Klicken Sie auf Lesezugriff erlauben oder wählen Sie den Ordner erneut aus.",
+		"Folder access is unavailable in this browser. Use chat attachments instead.":
+			"Ordnerzugriff ist in diesem Browser nicht verfügbar. Nutzen Sie stattdessen Dateianhänge im Chat.",
+		"Disconnecting stops future folder access. Previously read content remains in the conversation; delete the session to remove its local copy.":
+			"Das Trennen beendet künftige Ordnerzugriffe. Bereits gelesene Inhalte bleiben im Chat; löschen Sie die Sitzung, um deren lokale Kopie zu entfernen.",
+		"Supports text/code, PDF, Word, Excel, PowerPoint and common images, up to 20 MB per file. Generated artifacts can be saved to the folder only with write access and confirmation.":
+			"Unterstützt Text/Code, PDF, Word, Excel, PowerPoint und gängige Bilder bis 20 MB pro Datei. Erzeugte Artefakte können nur mit Schreibzugriff und Bestätigung im Ordner gespeichert werden.",
 		"Permission request failed": "Berechtigungsanfrage fehlgeschlagen",
 		"JavaScript Execution Permission Required": "JavaScript-Ausführungsberechtigung erforderlich",
 		"This extension needs permission to execute JavaScript code on web pages":

@@ -9,6 +9,9 @@
 - Hourly model metadata refresh from pi.dev for Anthropic, OpenAI/Codex, and Copilot, with local cache and bundled offline fallback
 - Model-specific thinking levels and effort aliases from pi.dev where supported by the installed runtime
 - `build-all.sh` / `npm run build:all` to build the extension and local dependencies without regenerating models
+- Read-only local working folder with a header shortcut and Settings > Folder, remembered via IndexedDB, explicit permission renewal, and disconnect across windows
+- Scoped, paginated folder-listing and file-reading tools for current text/code/documents/images, with path validation, 20 MB size limits, and no automatic file uploads
+- Optional working-folder write access with explicit opt-in/opt-out, per-file human confirmation, text/binary/artifact export, exclusive staged writes, and changed-file checks; no deletion or directory creation
 
 ### Fixed
 
@@ -16,6 +19,8 @@
 - Setup flow can finish when the settings dialog closes
 - Thinking selector now displays and applies the selected level instead of appearing unchanged
 - Off sends explicit `none` for supported models; otherwise the dropdown shows Default instead of implying disabled reasoning
+- Debugger and native-input automation reject privileged browser/extension contexts, including navigation changes, so agent tools cannot operate Sitegeist's file-save or permission dialogs
+- File-save confirmation dialogs now explicitly apply theme-aware text, preview backgrounds, and contrasting warnings in dark mode
 
 ## [1.0.0] - 2026-03-15
 

@@ -11,6 +11,7 @@ import { type Static, Type } from "@sinclair/typebox";
 import { html } from "lit";
 import { createRef, ref } from "lit/directives/ref.js";
 import { Bug } from "lucide";
+import { assertAutomatableTabUrl, guardBrowserExpression } from "./browser-context-guard.js";
 
 // ============================================================================
 // TYPES
@@ -82,6 +83,8 @@ CRITICAL: Use browserjs() and repl tool for DOM manipulation. Use this ONLY for 
 		if (!tab || !tab.id) {
 			throw new Error("No active tab found");
 		}
+		assertAutomatableTabUrl(tab.url);
+		if (tab.pendingUrl) assertAutomatableTabUrl(tab.pendingUrl);
 
 		try {
 			// Handle cookies action
@@ -136,7 +139,7 @@ CRITICAL: Use browserjs() and repl tool for DOM manipulation. Use this ONLY for 
 
 				// Execute code in MAIN world using Runtime.evaluate with returnByValue
 				const result = await chrome.debugger.sendCommand({ tabId: tab.id }, "Runtime.evaluate", {
-					expression: args.code,
+					expression: guardBrowserExpression(args.code),
 					returnByValue: true,
 				});
 

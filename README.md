@@ -71,13 +71,39 @@ The model picker checks [pi.dev's JSON model catalog](https://pi.dev/api/models)
 
 Some subscription logins require the CORS proxy (configurable in Settings > Proxy). The default proxy is `https://proxy.mariozechner.at/proxy`.
 
+## Local working folder
+
+Click the **folder icon** in the header or open **Settings > Folder** to choose a folder on your computer. Access starts **read-only**; choosing a folder does not enable writing, even if Chrome remembers an earlier write grant. The selected folder is shared across chats and windows; its handle is remembered locally in IndexedDB. After restarting Chrome, you may need to click **Grant read access** or select the folder again.
+
+You can place files in that folder and ask, for example:
+
+- "List the files in my working folder."
+- "Read `documents/report.pdf` and summarize it."
+- "Compare `data/prices.csv` with the prices on this website."
+
+Sitegeist lists one directory at a time with `list_workspace_files` and reads specific files with `read_workspace_file`. Both tools use relative paths inside the selected folder. Text/code/CSV/JSON (UTF-8 or UTF-16), PDF, Word (`.docx`), Excel (`.xlsx`/`.xls`), PowerPoint (`.pptx`), and PNG/JPEG/GIF/WebP images are supported, up to **20 MB per file**. Listings and text reads are paginated to limit model context. Each read sees the current file, including files added or changed after selection; there is no automatic folder watcher or bulk upload.
+
+**Privacy:** Selecting a folder does not send its files to an AI provider. When Sitegeist uses a listing or reads a file for your request, the returned names/content become part of the conversation and are sent to the selected provider. Choose a task-specific folder rather than your entire home directory. **Disconnect folder** stops future access in all Sitegeist windows and forgets the handle, but does not remove previous tool results from chats or undo data already sent. Delete the relevant sessions to remove their local copies.
+
+### Optional write access
+
+Choose **Read and write** in **Settings > Folder** to explicitly enable writing and grant Chrome's `readwrite` permission. This applies to the selected folder across chats/windows. **Use read-only access** disables Sitegeist's write tools again even if Chrome retains its browser permission. After a restart or revocation, click **Read and write** to renew access.
+
+You can then ask, for example, "Save the summary as `documents/summary.md`" or "Save the generated `report.xlsx` artifact in my working folder." `write_workspace_file` accepts UTF-8 text, base64 binary content, or an existing session artifact with an explicit encoding. Reads and writes are limited to **20 MB per file**; replacing larger existing files is also blocked.
+
+**Every save requires a separate human confirmation**, including new files. The dialog shows the exact target, byte count, source artifact (if applicable) and a preview for text. Existing files require explicit replacement confirmation; the model cannot approve the dialog itself or bypass it with a tool flag. New files also require confirmation because the browser API has no atomic exclusive-create operation. Cancel, close or stop the agent to decline a pending save.
+
+Writes use exclusive browser locks and staged streams. Existing contents are checked locally for changes before staging and committing; their bytes are not sent to the AI by the write tool. Changed destinations, revoked access and cancellation before commit abort staging rather than saving the proposed data. This is not an OS-wide lock against unrelated applications: keep backups of important files. Once the stream commits, cancellation cannot undo a saved change. An interrupted new-file creation may leave an empty file; Sitegeist does not delete it.
+
+There is **no deletion, renaming or directory-creation tool**. Destination parent directories must already exist. Generated artifacts remain independently downloadable. Folder handles are never exposed to REPL code, HTML artifacts or browser pages. Regular chat attachments continue to work independently. The extension's **Allow access to file URLs** setting is not a substitute for choosing and granting access to a folder. If the browser does not support folder access, use attachments instead.
+
 ## Checks
 
 ```bash
 ./check.sh
 ```
 
-Runs formatting, linting, and type checking for the extension and the `site/` subproject.
+Runs formatting, linting, and type checking for the extension and the `site/` subproject. Run `npm test` for the extension's targeted unit and UI tests, including folder permissions, path containment, live reads, pagination, write opt-in, confirmation, staging, concurrent changes, and cancellation.
 
 The Husky pre-commit hook runs the same checks before each commit.
 
