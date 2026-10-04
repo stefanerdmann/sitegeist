@@ -4,68 +4,132 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing release tag to build with this workflow (for example v1.1.0)'
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: sitegeist-release-${{ inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      # On manual repair runs, tooling comes from the selected workflow branch,
+      # while extension sources are always checked out from the exact release tag.
+      - name: Checkout release tooling
+        uses: actions/checkout@v4
+        with:
+          path: release-tooling
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Clone mini-lit
-        run: git clone --depth 1 https://github.com/badlogic/mini-lit.git ../mini-lit
+      - name: Validate release tag and load dependency pins
+        id: release
+        run: node release-tooling/scripts/ci-release.mjs configure
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
-      - name: Clone pi-mono
-        run: git clone --depth 1 https://github.com/badlogic/pi-mono.git ../pi-mono
+      - name: Checkout tagged extension sources
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.tag_ref }}
+          path: sitegeist
+          persist-credentials: false
 
-      - name: Install mini-lit
-        run: cd ../mini-lit && npm install && npm run build
+      - name: Checkout pinned mini-lit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.release.outputs.mini_lit_repository }}
+          ref: ${{ steps.release.outputs.mini_lit_commit }}
+          path: mini-lit
+          persist-credentials: false
 
-      - name: Install pi-mono
-        run: cd ../pi-mono && npm install && npm run build
+      - name: Checkout pinned pi-mono
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.release.outputs.pi_mono_repository }}
+          ref: ${{ steps.release.outputs.pi_mono_commit }}
+          path: pi-mono
+          persist-credentials: false
 
-      - name: Install sitegeist
-        run: npm install
+      - name: Apply and verify reviewed Pi compatibility patch
+        run: node release-tooling/scripts/ci-release.mjs prepare-dependencies "$GITHUB_WORKSPACE"
 
-      - name: Build extension
-        run: npm run build
+      - name: Test dependency preparation and release safeguards
+        run: node --test release-tooling/test/ci-release.test.mjs
 
-      - name: Create zip
+      - name: Verify source manifest matches the release tag
+        run: node release-tooling/scripts/ci-release.mjs validate-source "$RELEASE_TAG" "$GITHUB_WORKSPACE/sitegeist"
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+
+      - name: Install native dependencies and build only extension packages
+        working-directory: sitegeist
+        run: ./build-all.sh --install
+
+      - name: Check extension types and regression tests
+        working-directory: sitegeist
         run: |
-          cd dist-chrome
-          find . -name "*.map" -type f -delete
+          ../pi-mono/node_modules/.bin/tsc --noEmit -p tsconfig.json
+          npm test
+
+      - name: Record source provenance and release notes
+        run: node release-tooling/scripts/ci-release.mjs record-build "$RELEASE_TAG" "$GITHUB_WORKSPACE"
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+
+      - name: Create extension zip
+        working-directory: sitegeist/dist-chrome
+        run: |
+          find . -name '*.map' -type f -delete
           zip -r ../sitegeist.zip .
 
-      - name: Extract version
-        id: version
-        run: echo "version=$(node -p "require('./dist-chrome/manifest.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Upload tested release files
+        uses: actions/upload-artifact@v4
+        with:
+          name: sitegeist-${{ steps.release.outputs.tag }}
+          path: |
+            sitegeist/sitegeist.zip
+            sitegeist/release-notes.md
+          if-no-files-found: error
 
-      - name: Extract changelog
-        run: |
-          node -e "
-            const fs = require('fs');
-            const version = process.env.VERSION;
-            const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
-            const re = new RegExp('## \\\\[' + version.replace(/\\./g, '\\\\.') + '\\\\][^\\\\n]*\\n(.*?)(?=\\n## \\\\[|$)', 's');
-            const match = changelog.match(re);
-            let notes = match ? match[1].trim() : '';
-            notes += '\n\n---\n\nDownload \`sitegeist.zip\`, unzip, and load as unpacked extension in Chrome/Edge.\n\nSee [installation instructions](https://sitegeist.ai/install.html) for details.';
-            fs.writeFileSync('/tmp/release-notes.md', notes);
-          "
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sitegeist-${{ needs.build.outputs.tag }}
 
-      - name: Create release
+      - name: Create release or replace its rebuilt extension archive
         run: |
-          gh release create ${{ github.ref_name }} sitegeist.zip \
-            --title "Sitegeist ${{ steps.version.outputs.version }}" \
-            --notes-file /tmp/release-notes.md \
-            --latest
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" sitegeist.zip --clobber
+          else
+            gh release create "$RELEASE_TAG" sitegeist.zip \
+              --verify-tag \
+              --title "Sitegeist $RELEASE_VERSION" \
+              --notes-file release-notes.md \
+              --latest
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}

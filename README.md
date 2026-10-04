@@ -119,6 +119,12 @@ This builds `mini-lit`, the required `pi-mono` packages (TUI, AI, agent, web-ui)
 
 If native dependencies were installed on another OS (for example, Linux instead of macOS), use `npm run build:all -- --install` to reinstall dependencies for the current machine before building. Add `--with-site` to also build the marketing website, or `--dry-run` to show the build steps without running them. `npm run build` continues to build only the extension.
 
+### GitHub release builds
+
+The release workflow pins `mini-lit` and `pi-mono` to the source revisions in [`ci/dependencies.json`](ci/dependencies.json), verifies and applies the bundled Pi compatibility patch, and runs `build-all.sh --install`. It never regenerates model data or runs the full Pi monorepo build. Extension type checks and regression tests must pass before publication. The ZIP includes a `build-info.json` recording tagged extension sources, release tooling and exact dependency revisions.
+
+To rebuild the already-pushed `v1.1.0` with the repaired workflow, first commit and push the workflow changes to `main`. In GitHub **Actions > Release Extension > Run workflow**, choose branch `main` and enter `v1.1.0` as **release_tag**. This uses the new build tooling but keeps the extension's existing tag unchanged; do not move or force-push it. A successful run creates the release or replaces its `sitegeist.zip` asset. Merely re-running the old tag job still uses the old workflow. See [`ci/README.md`](ci/README.md) for provenance checks and dependency updates.
+
 ## Updating the website
 
 ```bash
@@ -135,7 +141,7 @@ Builds the static site and uploads it to `sitegeist.ai`. Requires SSH access to 
 ./release.sh major   # 1.0.0 -> 2.0.0
 ```
 
-Bumps the version in `static/manifest.chrome.json`, commits, tags, and pushes. GitHub Actions builds the extension and creates a release at [github.com/badlogic/sitegeist/releases](https://github.com/badlogic/sitegeist/releases).
+Bumps the version in `static/manifest.chrome.json`, commits, tags, and pushes. GitHub Actions builds the extension and creates a release in [this repository's Releases](https://github.com/stefanerdmann/sitegeist/releases).
 
 ## License
 

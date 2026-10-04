@@ -1,0 +1,3 @@
+# Unified-diff context has intentional leading spaces and blank context lines.
+# CI verifies patch bytes and the resulting source tree instead of reformatting them.
+ci/patches/*.patch -whitespace

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- GitHub releases use pinned dependency commits and a verified Pi compatibility patch instead of unpatched upstream main and a full monorepo/model-regeneration build
+- Manual release rebuilds use current CI tooling with unchanged tagged extension sources, validated versions, regression tests, build provenance, and idempotent ZIP publication
+
 ## [1.1.0] - 2026-10-04
 
 ### Added

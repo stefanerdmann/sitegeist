@@ -1,0 +1,481 @@
+diff --git a/packages/agent/CHANGELOG.md b/packages/agent/CHANGELOG.md
+index 174fe748f60ef179504871f68c431cd938b4164d..c2c8e6faae86d1cc7d445f0237db175d5b3bc48e 100644
+--- a/packages/agent/CHANGELOG.md
++++ b/packages/agent/CHANGELOG.md
+@@ -1,5 +1,11 @@
+ # Changelog
+ 
++## [Unreleased]
++
++### Fixed
++
++- Choose an available Google model if the default preview is absent from a regenerated model catalog.
++
+ ## [0.58.3] - 2026-03-15
+ 
+ ## [0.58.2] - 2026-03-15
+diff --git a/packages/agent/src/agent.ts b/packages/agent/src/agent.ts
+index 068b834f8b8575456f8c8b747ef0ba8e807f242e..0322becf4bb151529aa780b955a3c4dfb02b95dc 100644
+--- a/packages/agent/src/agent.ts
++++ b/packages/agent/src/agent.ts
+@@ -4,7 +4,7 @@
+  */
+ 
+ import {
+-	getModel,
++	getModels,
+ 	type ImageContent,
+ 	type Message,
+ 	type Model,
+@@ -113,10 +113,20 @@ export interface AgentOptions {
+ 	afterToolCall?: (context: AfterToolCallContext, signal?: AbortSignal) => Promise<AfterToolCallResult | undefined>;
+ }
+ 
++function defaultGoogleModel() {
++	const models = getModels("google");
++	const model =
++		models.find((item) => item.id === "gemini-2.5-flash-lite-preview-06-17") ??
++		models.find((item) => item.id === "gemini-2.5-flash-lite") ??
++		models[0];
++	if (!model) throw new Error("No Google models found in the model registry");
++	return model;
++}
++
+ export class Agent {
+ 	private _state: AgentState = {
+ 		systemPrompt: "",
+-		model: getModel("google", "gemini-2.5-flash-lite-preview-06-17"),
++		model: defaultGoogleModel(),
+ 		thinkingLevel: "off",
+ 		tools: [],
+ 		messages: [],
+diff --git a/packages/ai/CHANGELOG.md b/packages/ai/CHANGELOG.md
+index 5848190e16004538e9d87efffac067a605e2115e..c1ea455419fb35ccff270091ca615a71fd43b7b0 100644
+--- a/packages/ai/CHANGELOG.md
++++ b/packages/ai/CHANGELOG.md
+@@ -1,5 +1,12 @@
+ # Changelog
+ 
++## [Unreleased]
++
++### Added
++
++- Per-model `thinkingLevelMap` metadata and thinking-level helpers for supported reasoning efforts.
++- Explicit `reasoningEffort: "none"` forwarding for Responses, Codex, and OpenAI-compatible Completions models when selected metadata allows disabling reasoning.
++
+ ## [0.58.3] - 2026-03-15
+ 
+ ## [0.58.2] - 2026-03-15
+diff --git a/packages/ai/src/models.ts b/packages/ai/src/models.ts
+index 101c83f2c3a5a19b5bf1f519dd3012ce1039e703..f7deec725224a5febb2c1a361b4c9194f9c641d0 100644
+--- a/packages/ai/src/models.ts
++++ b/packages/ai/src/models.ts
+@@ -1,5 +1,5 @@
+ import { MODELS } from "./models.generated.js";
+-import type { Api, KnownProvider, Model, Usage } from "./types.js";
++import type { Api, KnownProvider, Model, ThinkingLevel, Usage } from "./types.js";
+ 
+ const modelRegistry: Map<string, Map<string, Model<Api>>> = new Map();
+ 
+@@ -53,6 +53,8 @@ export function calculateCost<TApi extends Api>(model: Model<TApi>, usage: Usage
+  * - Opus 4.6 models (xhigh maps to adaptive effort "max" on Anthropic-compatible providers)
+  */
+ export function supportsXhigh<TApi extends Api>(model: Model<TApi>): boolean {
++	if (model.thinkingLevelMap?.xhigh !== undefined) return model.thinkingLevelMap.xhigh === "xhigh";
++
+ 	if (model.id.includes("gpt-5.2") || model.id.includes("gpt-5.3") || model.id.includes("gpt-5.4")) {
+ 		return true;
+ 	}
+@@ -64,6 +66,36 @@ export function supportsXhigh<TApi extends Api>(model: Model<TApi>): boolean {
+ 	return false;
+ }
+ 
++export type SelectableThinkingLevel = "off" | ThinkingLevel;
++const THINKING_LEVELS: SelectableThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
++
++/** Levels that the current runtime can actually request for this model. */
++export function getSelectableThinkingLevels<TApi extends Api>(
++	model: Model<TApi> | null | undefined,
++): SelectableThinkingLevel[] {
++	if (!model?.reasoning) return ["off"];
++	return THINKING_LEVELS.filter((level) => {
++		if (level === "off") return true;
++		if (model.thinkingLevelMap?.[level] === null || model.thinkingLevelMap?.[level] === "none") return false;
++		if (level !== "xhigh") return true;
++		if (!supportsXhigh(model)) return false;
++		// The older Anthropic transport only handles xhigh on Opus 4.6 (as adaptive max).
++		return model.api !== "anthropic-messages" || model.id.includes("opus-4-6") || model.id.includes("opus-4.6");
++	});
++}
++
++/** Apply an explicit pi.dev effort alias without mutating the selected UI level. */
++export function mapReasoningLevel<TApi extends Api>(
++	model: Model<TApi>,
++	level: "off" | ThinkingLevel | undefined,
++): "none" | ThinkingLevel | undefined {
++	if (!level || level === "off") {
++		return model.thinkingLevelMap?.off === "none" ? "none" : undefined;
++	}
++	const mapped = model.thinkingLevelMap?.[level];
++	return mapped === null || mapped === "none" ? undefined : (mapped ?? level);
++}
++
+ /**
+  * Check if two models are equal by comparing both their id and provider.
+  * Returns false if either model is null or undefined.
+diff --git a/packages/ai/src/providers/openai-codex-responses.ts b/packages/ai/src/providers/openai-codex-responses.ts
+index a544e3d49a7ea0f8868dedeb0a83fd6c6d093fcd..94ebb3e2197a69949dd146c3fa0552daba92e1af 100644
+--- a/packages/ai/src/providers/openai-codex-responses.ts
++++ b/packages/ai/src/providers/openai-codex-responses.ts
+@@ -281,7 +281,8 @@ export const streamSimpleOpenAICodexResponses: StreamFunction<"openai-codex-resp
+ 	}
+ 
+ 	const base = buildBaseOptions(model, options, apiKey);
+-	const reasoningEffort = supportsXhigh(model) ? options?.reasoning : clampReasoning(options?.reasoning);
++	const reasoningEffort =
++		options?.reasoningEffort ?? (supportsXhigh(model) ? options?.reasoning : clampReasoning(options?.reasoning));
+ 
+ 	return streamOpenAICodexResponses(model, context, {
+ 		...base,
+diff --git a/packages/ai/src/providers/openai-completions.ts b/packages/ai/src/providers/openai-completions.ts
+index 343d127fbfccc4062da3d6e8399c04f62ea35042..10a33c03a0466f4c676e798679e8423c14dbd6c4 100644
+--- a/packages/ai/src/providers/openai-completions.ts
++++ b/packages/ai/src/providers/openai-completions.ts
+@@ -54,7 +54,7 @@ function hasToolHistory(messages: Message[]): boolean {
+ 
+ export interface OpenAICompletionsOptions extends StreamOptions {
+ 	toolChoice?: "auto" | "none" | "required" | { type: "function"; function: { name: string } };
+-	reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh";
++	reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+ }
+ 
+ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenAICompletionsOptions> = (
+@@ -302,7 +302,8 @@ export const streamSimpleOpenAICompletions: StreamFunction<"openai-completions",
+ 	}
+ 
+ 	const base = buildBaseOptions(model, options, apiKey);
+-	const reasoningEffort = supportsXhigh(model) ? options?.reasoning : clampReasoning(options?.reasoning);
++	const reasoningEffort =
++		options?.reasoningEffort ?? (supportsXhigh(model) ? options?.reasoning : clampReasoning(options?.reasoning));
+ 	const toolChoice = (options as OpenAICompletionsOptions | undefined)?.toolChoice;
+ 
+ 	return streamOpenAICompletions(model, context, {
+@@ -392,13 +393,14 @@ function buildParams(model: Model<"openai-completions">, context: Context, optio
+ 		params.tool_choice = options.toolChoice;
+ 	}
+ 
++	const enableThinking = options?.reasoningEffort !== undefined && options.reasoningEffort !== "none";
+ 	if (compat.thinkingFormat === "zai" && model.reasoning) {
+-		(params as any).enable_thinking = !!options?.reasoningEffort;
++		(params as any).enable_thinking = enableThinking;
+ 	} else if (compat.thinkingFormat === "qwen" && model.reasoning) {
+-		(params as any).enable_thinking = !!options?.reasoningEffort;
++		(params as any).enable_thinking = enableThinking;
+ 	} else if (compat.thinkingFormat === "qwen-chat-template" && model.reasoning) {
+-		(params as any).chat_template_kwargs = { enable_thinking: !!options?.reasoningEffort };
+-	} else if (options?.reasoningEffort && model.reasoning && compat.supportsReasoningEffort) {
++		(params as any).chat_template_kwargs = { enable_thinking: enableThinking };
++	} else if (options?.reasoningEffort !== undefined && model.reasoning && compat.supportsReasoningEffort) {
+ 		// OpenAI-style reasoning_effort
+ 		(params as any).reasoning_effort = mapReasoningEffort(options.reasoningEffort, compat.reasoningEffortMap);
+ 	}
+diff --git a/packages/ai/src/providers/openai-responses.ts b/packages/ai/src/providers/openai-responses.ts
+index a2e56404e0c646bcd6fa9aa2e3025255a4b66696..bc27200c7d2dffcc236a1ba3916678537fc68280 100644
+--- a/packages/ai/src/providers/openai-responses.ts
++++ b/packages/ai/src/providers/openai-responses.ts
+@@ -50,7 +50,7 @@ function getPromptCacheRetention(baseUrl: string, cacheRetention: CacheRetention
+ 
+ // OpenAI Responses-specific options
+ export interface OpenAIResponsesOptions extends StreamOptions {
+-	reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh";
++	reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+ 	reasoningSummary?: "auto" | "detailed" | "concise" | null;
+ 	serviceTier?: ResponseCreateParamsStreaming["service_tier"];
+ }
+@@ -138,7 +138,8 @@ export const streamSimpleOpenAIResponses: StreamFunction<"openai-responses", Sim
+ 	}
+ 
+ 	const base = buildBaseOptions(model, options, apiKey);
+-	const reasoningEffort = supportsXhigh(model) ? options?.reasoning : clampReasoning(options?.reasoning);
++	const reasoningEffort =
++		options?.reasoningEffort ?? (supportsXhigh(model) ? options?.reasoning : clampReasoning(options?.reasoning));
+ 
+ 	return streamOpenAIResponses(model, context, {
+ 		...base,
+@@ -214,9 +215,9 @@ function buildParams(model: Model<"openai-responses">, context: Context, options
+ 	}
+ 
+ 	if (model.reasoning) {
+-		if (options?.reasoningEffort || options?.reasoningSummary) {
++		if (options?.reasoningEffort !== undefined || options?.reasoningSummary) {
+ 			params.reasoning = {
+-				effort: options?.reasoningEffort || "medium",
++				effort: options?.reasoningEffort ?? "medium",
+ 				summary: options?.reasoningSummary || "auto",
+ 			};
+ 			params.include = ["reasoning.encrypted_content"];
+diff --git a/packages/ai/src/types.ts b/packages/ai/src/types.ts
+index 24699e63afc86a1faba2a8b5fc3a3965aff6b46f..6031037094b9d8333a02e94cda12b0018989bbb5 100644
+--- a/packages/ai/src/types.ts
++++ b/packages/ai/src/types.ts
+@@ -110,6 +110,8 @@ export type ProviderStreamOptions = StreamOptions & Record<string, unknown>;
+ // Unified options with reasoning passed to streamSimple() and completeSimple()
+ export interface SimpleStreamOptions extends StreamOptions {
+ 	reasoning?: ThinkingLevel;
++	/** Explicit provider effort, including `none` where the model supports disabling reasoning. */
++	reasoningEffort?: "none" | ThinkingLevel;
+ 	/** Custom token budgets for thinking levels (token-based providers only) */
+ 	thinkingBudgets?: ThinkingBudgets;
+ }
+@@ -327,6 +329,8 @@ export interface Model<TApi extends Api> {
+ 	contextWindow: number;
+ 	maxTokens: number;
+ 	headers?: Record<string, string>;
++	/** Optional per-model mapping from UI thinking levels to provider reasoning levels. */
++	thinkingLevelMap?: Partial<Record<"off" | ThinkingLevel, "none" | ThinkingLevel | null>>;
+ 	/** Compatibility overrides for OpenAI-compatible APIs. If not set, auto-detected from baseUrl. */
+ 	compat?: TApi extends "openai-completions"
+ 		? OpenAICompletionsCompat
+diff --git a/packages/web-ui/CHANGELOG.md b/packages/web-ui/CHANGELOG.md
+index 22eba9e966a75e53db8fff8201cf2492877e136c..7bc0ea95b9f8452eb283986302ab5ffb121b3e63 100644
+--- a/packages/web-ui/CHANGELOG.md
++++ b/packages/web-ui/CHANGELOG.md
+@@ -1,5 +1,20 @@
+ # Changelog
+ 
++## [Unreleased]
++
++### Added
++
++- Optional `onModelSelect` callback for custom model pickers in `ChatPanel` and `AgentInterface`.
++- Optional `onClose` callback for `SettingsDialog.open`.
++
++### Changed
++
++- Thinking selector options now follow the model's supported reasoning levels, including xhigh where supported; models without explicit off support display Default.
++
++### Fixed
++
++- Update the thinking selector label immediately when a different level is chosen.
++
+ ## [0.58.3] - 2026-03-15
+ 
+ ### Fixed
+diff --git a/packages/web-ui/src/ChatPanel.ts b/packages/web-ui/src/ChatPanel.ts
+index e055c7765b149efda6025511efb3a214880e0bff..20227d67ad20b4a8fc86dcab3f220f2e78cb19d7 100644
+--- a/packages/web-ui/src/ChatPanel.ts
++++ b/packages/web-ui/src/ChatPanel.ts
+@@ -57,6 +57,7 @@ export class ChatPanel extends LitElement {
+ 		agent: Agent,
+ 		config?: {
+ 			onApiKeyRequired?: (provider: string) => Promise<boolean>;
++			onModelSelect?: () => void | Promise<void>;
+ 			onBeforeSend?: () => void | Promise<void>;
+ 			onCostClick?: () => void;
+ 			sandboxUrlProvider?: () => string;
+@@ -78,6 +79,7 @@ export class ChatPanel extends LitElement {
+ 		this.agentInterface.enableThinkingSelector = true;
+ 		this.agentInterface.showThemeToggle = false;
+ 		this.agentInterface.onApiKeyRequired = config?.onApiKeyRequired;
++		this.agentInterface.onModelSelect = config?.onModelSelect;
+ 		this.agentInterface.onBeforeSend = config?.onBeforeSend;
+ 		this.agentInterface.onCostClick = config?.onCostClick;
+ 
+diff --git a/packages/web-ui/src/components/AgentInterface.ts b/packages/web-ui/src/components/AgentInterface.ts
+index fd4872a5b8468d462078f4534db80c655851cb4b..185e45db61a55f58c8c37961444abb24ceb3b91a 100644
+--- a/packages/web-ui/src/components/AgentInterface.ts
++++ b/packages/web-ui/src/components/AgentInterface.ts
+@@ -8,7 +8,7 @@ import "./MessageList.js";
+ import "./Messages.js"; // Import for side effects to register the custom elements
+ import { getAppStorage } from "../storage/app-storage.js";
+ import "./StreamingMessageContainer.js";
+-import type { Agent, AgentEvent } from "@mariozechner/pi-agent-core";
++import type { Agent, AgentEvent, ThinkingLevel } from "@mariozechner/pi-agent-core";
+ import type { Attachment } from "../utils/attachment-utils.js";
+ import { formatUsage } from "../utils/format.js";
+ import { i18n } from "../utils/i18n.js";
+@@ -26,6 +26,8 @@ export class AgentInterface extends LitElement {
+ 	@property({ type: Boolean }) showThemeToggle = false;
+ 	// Optional custom API key prompt handler - if not provided, uses default dialog
+ 	@property({ attribute: false }) onApiKeyRequired?: (provider: string) => Promise<boolean>;
++	// Override the built-in model selector without changing the default behavior for other apps.
++	@property({ attribute: false }) onModelSelect?: () => void | Promise<void>;
+ 	// Optional callback called before sending a message
+ 	@property({ attribute: false }) onBeforeSend?: () => void | Promise<void>;
+ 	// Optional callback called before executing a tool call - return false to prevent execution
+@@ -364,12 +366,17 @@ export class AgentInterface extends LitElement {
+ 							}}
+ 							.onAbort=${() => session.abort()}
+ 							.onModelSelect=${() => {
+-								ModelSelector.open(state.model, (model) => session.setModel(model));
++								if (this.onModelSelect) {
++									void this.onModelSelect();
++								} else {
++									void ModelSelector.open(state.model, (model) => session.setModel(model));
++								}
+ 							}}
+ 							.onThinkingChange=${
+ 								this.enableThinkingSelector
+-									? (level: "off" | "minimal" | "low" | "medium" | "high") => {
++									? (level: ThinkingLevel) => {
+ 											session.setThinkingLevel(level);
++											this.requestUpdate();
+ 										}
+ 									: undefined
+ 							}
+diff --git a/packages/web-ui/src/components/MessageEditor.ts b/packages/web-ui/src/components/MessageEditor.ts
+index 78e442307b761d32cff82b9662141fa9b8e4642b..1398cc1ec805b30c4b29dfecb44fb16523452999 100644
+--- a/packages/web-ui/src/components/MessageEditor.ts
++++ b/packages/web-ui/src/components/MessageEditor.ts
+@@ -1,7 +1,7 @@
+ import { icon } from "@mariozechner/mini-lit";
+ import { Button } from "@mariozechner/mini-lit/dist/Button.js";
+ import { Select, type SelectOption } from "@mariozechner/mini-lit/dist/Select.js";
+-import type { Model } from "@mariozechner/pi-ai";
++import { getSelectableThinkingLevels, type Model } from "@mariozechner/pi-ai";
+ import { html, LitElement } from "lit";
+ import { customElement, property, state } from "lit/decorators.js";
+ import { createRef, ref } from "lit/directives/ref.js";
+@@ -11,6 +11,15 @@ import { i18n } from "../utils/i18n.js";
+ import "./AttachmentTile.js";
+ import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
+ 
++const THINKING_LABELS = {
++	off: "Off",
++	minimal: "Minimal",
++	low: "Low",
++	medium: "Medium",
++	high: "High",
++	xhigh: "XHigh",
++} as const satisfies Record<ThinkingLevel, string>;
++
+ @customElement("message-editor")
+ export class MessageEditor extends LitElement {
+ 	private _value = "";
+@@ -37,7 +46,7 @@ export class MessageEditor extends LitElement {
+ 	@property() onSend?: (input: string, attachments: Attachment[]) => void;
+ 	@property() onAbort?: () => void;
+ 	@property() onModelSelect?: () => void;
+-	@property() onThinkingChange?: (level: "off" | "minimal" | "low" | "medium" | "high") => void;
++	@property() onThinkingChange?: (level: ThinkingLevel) => void;
+ 	@property() onFilesChange?: (files: Attachment[]) => void;
+ 	@property() attachments: Attachment[] = [];
+ 	@property() maxFiles = 10;
+@@ -235,7 +244,13 @@ export class MessageEditor extends LitElement {
+ 	override render() {
+ 		// Check if current model supports thinking/reasoning
+ 		const model = this.currentModel;
+-		const supportsThinking = model?.reasoning === true; // Models with reasoning:true support thinking
++		const thinkingLevels = getSelectableThinkingLevels(model);
++		const offLabel =
++			model?.thinkingLevelMap?.off === "none" ||
++			(model?.api === "anthropic-messages" && model.thinkingLevelMap?.off !== null)
++				? "Off"
++				: "Default";
++		const supportsThinking = model?.reasoning === true && thinkingLevels.length > 1;
+ 
+ 		return html`
+ 			<div
+@@ -325,17 +340,19 @@ export class MessageEditor extends LitElement {
+ 									${Select({
+ 										value: this.thinkingLevel,
+ 										placeholder: i18n("Off"),
+-										options: [
+-											{ value: "off", label: i18n("Off"), icon: icon(Brain, "sm") },
+-											{ value: "minimal", label: i18n("Minimal"), icon: icon(Brain, "sm") },
+-											{ value: "low", label: i18n("Low"), icon: icon(Brain, "sm") },
+-											{ value: "medium", label: i18n("Medium"), icon: icon(Brain, "sm") },
+-											{ value: "high", label: i18n("High"), icon: icon(Brain, "sm") },
+-										] as SelectOption[],
++										options: thinkingLevels.map(
++											(level): SelectOption => ({
++												value: level,
++												label: i18n(level === "off" ? offLabel : THINKING_LABELS[level]),
++												icon: icon(Brain, "sm"),
++											}),
++										),
+ 										onChange: (value: string) => {
+-											this.onThinkingChange?.(value as "off" | "minimal" | "low" | "medium" | "high");
++											const level = value as ThinkingLevel;
++											this.thinkingLevel = level;
++											this.onThinkingChange?.(level);
+ 										},
+-										width: "80px",
++										width: "125px",
+ 										size: "sm",
+ 										variant: "ghost",
+ 										fitContent: true,
+diff --git a/packages/web-ui/src/dialogs/SettingsDialog.ts b/packages/web-ui/src/dialogs/SettingsDialog.ts
+index 2a3515a3039408c2578c7f39d3a801ad666bccbc..9fb34efdb1d275d11f74f6642bfef25557b6b1f6 100644
+--- a/packages/web-ui/src/dialogs/SettingsDialog.ts
++++ b/packages/web-ui/src/dialogs/SettingsDialog.ts
+@@ -117,14 +117,16 @@ export class SettingsDialog extends LitElement {
+ 	@property({ type: Array, attribute: false }) tabs: SettingsTab[] = [];
+ 	@state() private isOpen = false;
+ 	@state() private activeTabIndex = 0;
++	private onClose?: () => void;
+ 
+ 	protected createRenderRoot() {
+ 		return this;
+ 	}
+ 
+-	static async open(tabs: SettingsTab[]) {
++	static async open(tabs: SettingsTab[], onClose?: () => void) {
+ 		const dialog = new SettingsDialog();
+ 		dialog.tabs = tabs;
++		dialog.onClose = onClose;
+ 		dialog.isOpen = true;
+ 		document.body.appendChild(dialog);
+ 	}
+@@ -173,6 +175,8 @@ export class SettingsDialog extends LitElement {
+ 			onClose: () => {
+ 				this.isOpen = false;
+ 				this.remove();
++				this.onClose?.();
++				this.onClose = undefined;
+ 			},
+ 			width: "min(1000px, 90vw)",
+ 			height: "min(800px, 90vh)",
+diff --git a/packages/web-ui/src/utils/i18n.ts b/packages/web-ui/src/utils/i18n.ts
+index 1f50a7d086faea11c0cef1cc842f16d538ba9e5c..bef5bf531d81ebcdf64f725f6f2a7eb9605ea2c9 100644
+--- a/packages/web-ui/src/utils/i18n.ts
++++ b/packages/web-ui/src/utils/i18n.ts
+@@ -144,10 +144,12 @@ declare module "@mariozechner/mini-lit" {
+ 		"Enter your API key for {provider}": string;
+ 		"Allows browser-based apps to bypass CORS restrictions when calling LLM providers. Required for Z-AI and Anthropic with OAuth token.": string;
+ 		Off: string;
++		Default: string;
+ 		Minimal: string;
+ 		Low: string;
+ 		Medium: string;
+ 		High: string;
++		XHigh: string;
+ 		"Storage Permission Required": string;
+ 		"This app needs persistent storage to save your conversations": string;
+ 		"Why is this needed?": string;
+@@ -356,10 +358,12 @@ export const translations = {
+ 		"Allows browser-based apps to bypass CORS restrictions when calling LLM providers. Required for Z-AI and Anthropic with OAuth token.":
+ 			"Allows browser-based apps to bypass CORS restrictions when calling LLM providers. Required for Z-AI and Anthropic with OAuth token.",
+ 		Off: "Off",
++		Default: "Default",
+ 		Minimal: "Minimal",
+ 		Low: "Low",
+ 		Medium: "Medium",
+ 		High: "High",
++		XHigh: "Extra High",
+ 		"Storage Permission Required": "Storage Permission Required",
+ 		"This app needs persistent storage to save your conversations":
+ 			"This app needs persistent storage to save your conversations",
+@@ -575,10 +579,12 @@ export const translations = {
+ 		"Allows browser-based apps to bypass CORS restrictions when calling LLM providers. Required for Z-AI and Anthropic with OAuth token.":
+ 			"Ermöglicht browserbasierten Anwendungen, CORS-Einschränkungen beim Aufruf von LLM-Anbietern zu umgehen. Erforderlich für Z-AI und Anthropic mit OAuth-Token.",
+ 		Off: "Aus",
++		Default: "Standard",
+ 		Minimal: "Minimal",
+ 		Low: "Niedrig",
+ 		Medium: "Mittel",
+ 		High: "Hoch",
++		XHigh: "Sehr hoch",
+ 		"Storage Permission Required": "Speicherberechtigung erforderlich",
+ 		"This app needs persistent storage to save your conversations":
+ 			"Diese App benötigt dauerhaften Speicher, um Ihre Konversationen zu speichern",

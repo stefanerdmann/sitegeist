@@ -1,0 +1,16 @@
+{
+	"miniLit": {
+		"repository": "badlogic/mini-lit",
+		"version": "v0.2.1",
+		"commit": "dee21bf1175de0cb16a946ba8fb62c1e590fbd3c"
+	},
+	"piMono": {
+		"repository": "badlogic/pi-mono",
+		"version": "v0.58.3",
+		"commit": "1c93f9f0991ba7d737b60920a3219b482e7d6bc6",
+		"patch": "patches/pi-mono-sitegeist.patch",
+		"patchSha256": "492c26c0d40e4be2f3e6a898d0d4442e117a1f36a2072f598a7c140d5e20df5b",
+		"patchedTree": "85d9427278825a2b4bae1a9c61b3327ffd1d1556",
+		"modelCatalogBlob": "f2a1285e77fa190870d663937df744a03d33cfc8"
+	}
+}
