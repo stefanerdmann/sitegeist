@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-04
+
 ### Added
 
 - GitHub Copilot login for GitHub Enterprise domains, including token refresh and Enterprise model API routing
